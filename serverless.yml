@@ -1,0 +1,104 @@
+service: fileProcessingService
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.8
+  region: eu-west-1
+  environment:
+    STAGE: ${self:provider.stage}
+    REGION: ${self:provider.region}
+    BUCKET_NAME: '${self:provider.stage}-${self:custom.rawFilesBucketName}'
+
+functions:
+  uploadApi:
+    handler: src.handlers.upload_raw_files.handler
+    environment:
+      BUCKET_NAME: '${self:provider.stage}-${self:custom.rawFilesBucketName}'
+    events:
+      - http:
+          path: upload
+          method: post
+
+  preprocessRawFile:
+    handler: src.handlers.preprocess_file.handler
+    events:
+      - s3:
+          bucket: ${self:provider.environment.BUCKET_NAME}
+          event: s3:ObjectCreated:*
+          existing: true
+          rules:
+            - suffix: .pdf
+            - suffix: .txt
+            - suffix: .csv
+
+  deleteRawFile:
+    handler: src.handlers.delete_raw_file.handler
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - RawFileDeletionQueue
+              - Arn
+
+resources:
+  Resources:
+    UploadsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.rawFilesBucketName}
+
+    ProcessedFileDeletionTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: ProcessedFileDeletionTopic
+
+    RawFileDeletionQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: RawFileDeletionQueue
+
+    Subscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        Endpoint:
+          Fn::GetAtt:
+            - RawFileDeletionQueue
+            - Arn
+        Protocol: sqs
+        TopicArn:
+          Ref: ProcessedFileDeletionTopic
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - s3:DeleteObject
+      Resource:
+        Fn::Join:
+          - ''
+          - - 'arn:aws:s3:::'
+            - ${self:custom.rawFilesBucketName}
+            - '/*'
+
+    - Effect: Allow
+      Action:
+        - sqs:ReceiveMessage
+        - sqs:DeleteMessage
+      Resource:
+        Fn::GetAtt:
+          - RawFileDeletionQueue
+          - Arn
+
+    - Effect: Allow
+      Action:
+        - sns:Publish
+      Resource:
+        Ref: ProcessedFileDeletionTopic
+
+    - Effect: Allow
+      Action:
+        - lambda:InvokeFunction
+      Resource:
+        Fn::GetAtt:
+          - deleteRawFile
+          - Arn
