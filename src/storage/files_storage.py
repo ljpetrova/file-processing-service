@@ -18,20 +18,21 @@ PRESIGNED_POST_MAX_FILESIZE = 20 * MB
 logger = Logger()
 tracer = Tracer()
 
-'''
-    FilesRepository is a class that handles all the interactions with S3 and RDS.
-'''
+
 class FilesRepository:
-    
     '''
+    FilesRepository is a class that handles all the interactions with S3 and RDS.
+    '''
+
+    def upload_to_s3_and_save_metadata_to_db(
+        self, file_content, file_name, folder_name
+    ):
+        '''
         upload_to_s3_and_save_metadata_to_db uploads the file to S3 and saves the metadata to RDS.
         file_content: The content of the file to be uploaded
         file_name: The name of the file to be uploaded
         folder_name: The name of the folder to be created in S3
-    '''
-    def upload_to_s3_and_save_metadata_to_db(
-        self, file_content, file_name, folder_name
-    ):
+        '''
         s3_key = f"{folder_name}/{file_name}"
         bucket_name = os.environ["BUCKET_NAME"]
 
@@ -70,11 +71,12 @@ class FilesRepository:
         conn.commit()
         conn.close()
 
-    '''
+
+    def delete_file_from_s3_and_soft_delete_from_db(self, file_info):
+        '''
         delete_file_from_s3_and_soft_delete_from_db deletes the file from S3 and soft deletes the metadata from RDS.
         file_info: The information about the file to be deleted
-    '''
-    def delete_file_from_s3_and_soft_delete_from_db(self, file_info):
+        '''
         bucket_name = file_info['bucket_name']
         file_key = file_info['file_key']
 
